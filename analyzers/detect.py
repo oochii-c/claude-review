@@ -40,13 +40,20 @@ def _redirect_hit(text):
     return best
 
 
+def _temp(strength):
+    """Map a 0-10 friction strength to a body temperature in Celsius.
+    36.0 = calm baseline; 36-37.5 is normal body temp (minor friction);
+    higher reads as fever. 아니/다시(4)->37.4, 왜자꾸(9)->39.2."""
+    return round(36.0 + strength * 0.35, 1)
+
+
 def _heat(text, base_strength):
-    h = base_strength
+    s = base_strength
     if CURSE.search(text):
-        h = max(h, 9)
+        s = max(s, 9)
     if BANG.search(text):
-        h = min(10, h + 1)
-    return min(10, h)
+        s = min(10, s + 1)
+    return _temp(min(10, s))
 
 
 def load_session(conn, sid):
@@ -117,7 +124,7 @@ def find_incidents(msgs):
             continue
         incidents.append({
             "start_idx": a, "end_idx": b, "wasted_turns": b - a + 1,
-            "heat": 3, "signals": json.dumps(["file_churn"], ensure_ascii=False),
+            "heat": _temp(3), "signals": json.dumps(["file_churn"], ensure_ascii=False),
             "n_redirects": 0,
         })
     incidents.sort(key=lambda x: x["start_idx"])

@@ -32,7 +32,8 @@ sessions, lean toward config.
 
 You are not a participant. Cite the transcript verbatim in `evidence`. Give one
 honest reason the opposite verdict could hold in `counter_evidence`. Score tone
-intensity 0-10 in `heat`."""
+intensity as a body temperature in `heat` (Celsius): 36.0 = calm, 36-37.5 is
+normal, mild pushback ~37.5, a heated argument 38.5+, fury 40+."""
 
 SCHEMA = {
     "type": "object",
@@ -43,7 +44,7 @@ SCHEMA = {
         "evidence": {"type": "string"},
         "counter_evidence": {"type": "string"},
         "suggestion": {"type": "string"},
-        "heat": {"type": "integer"},
+        "heat": {"type": "number"},
     },
     "required": [
         "blame",

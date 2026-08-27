@@ -20,8 +20,16 @@ def _esc(s):
     return html.escape(s or "")
 
 
-def _heat_class(h):
-    return "h-hi" if h >= 7 else "h-mid" if h >= 4 else "h-lo"
+def _heat_class(t):
+    return "h-hi" if t >= 38.5 else "h-mid" if t >= 37.5 else "h-lo"
+
+
+def _day_label(max_temp):
+    if max_temp >= 38.5:
+        return "한판 붙은 날"
+    if max_temp >= 37.5:
+        return "소소한 마찰"
+    return "싸움 없음"
 
 
 def _stat(n, label):
@@ -34,7 +42,7 @@ def _scoreboard(conn):
     inc = conn.execute("SELECT COUNT(*) c FROM incidents").fetchone()["c"]
     rounds = conn.execute("SELECT COUNT(*) c FROM rounds").fetchone()["c"]
     corrections = conn.execute("SELECT COALESCE(SUM(count),0) c FROM phrases WHERE side='user'").fetchone()["c"]
-    max_heat = conn.execute("SELECT COALESCE(MAX(heat),0) h FROM incidents").fetchone()["h"]
+    max_heat = conn.execute("SELECT COALESCE(MAX(heat),36.0) h FROM incidents").fetchone()["h"]
 
     # outcome tally — null until judge
     outs = dict(conn.execute("SELECT outcome, COUNT(*) FROM rounds GROUP BY outcome").fetchall())
@@ -46,9 +54,10 @@ def _scoreboard(conn):
         _stat(inc, "사건 후보"),
         _stat(rounds, "라운드 후보"),
         _stat(corrections, "정정 발화"),
-        _stat(f'<span class="{_heat_class(max_heat)}">{max_heat}</span>', "최고 열기"),
+        _stat(f'<span class="{_heat_class(max_heat)}">{max_heat:.1f}°C</span>', "최고 열기"),
     ])
     out_html = "<h2>스코어보드</h2>"
+    out_html += f'<p class="sub">오늘: {_day_label(max_heat)}</p>'
     out_html += f'<div class="grid">{cards}</div>'
     if judged:
         tally = " · ".join(f"{OUTCOME_KO.get(k, k)} {v}" for k, v in outs.items() if k)
@@ -90,7 +99,7 @@ def _incidents(conn, limit=40):
         blame = (f'<span class="tag">{BLAME_KO.get(i["blame"], i["blame"])}</span>'
                  if i["blame"] else '<span class="tag pending">미판정</span>')
         body += '<div class="card"><div class="top">'
-        body += f'<span class="heat {hc}">열기 {i["heat"]}</span>'
+        body += f'<span class="heat {hc}">열기 {i["heat"]:.1f}°C</span>'
         body += f'<span class="tag">{_esc(proj)}</span>'
         body += f'<span class="tag">낭비 {i["wasted_turns"]}턴</span>'
         body += f'<span class="tag">{_esc(signals)}</span>'
