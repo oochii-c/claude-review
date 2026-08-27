@@ -60,7 +60,9 @@ SCHEMA = {
 
 
 def _client():
-    """Return an Anthropic client, or None if unavailable."""
+    """Return an Anthropic client, or None if the SDK or a key is missing."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
     try:
         import anthropic
     except ImportError:

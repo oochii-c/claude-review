@@ -24,6 +24,19 @@ if hasattr(sys.stdout, "buffer"):
 OUT_DIR = os.path.join(os.path.dirname(__file__), "out")
 
 
+def _load_env():
+    """Load KEY=VALUE lines from a gitignored .env (for ANTHROPIC_API_KEY)."""
+    path = os.path.join(os.path.dirname(__file__), ".env")
+    if not os.path.exists(path):
+        return
+    for line in open(path, encoding="utf-8"):
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
 def collect(conn, since):
     n_sessions = n_msgs = 0
     project = None
@@ -50,9 +63,13 @@ def main():
         "--judge", action="store_true", help="run the Claude API blame judgment"
     )
     ap.add_argument(
+        "--judge-limit", type=int, help="judge only the N hottest incidents"
+    )
+    ap.add_argument(
         "--no-open", action="store_true", help="don't open the report in a browser"
     )
     args = ap.parse_args()
+    _load_env()
 
     if args.all:
         since = None
@@ -74,7 +91,7 @@ def main():
     print(f"detected {n_inc} incidents, {n_rounds} rounds; {n_ph} phrase tallies")
 
     if args.judge:
-        judged, msg = judge.judge_all(conn)
+        judged, msg = judge.judge_all(conn, limit=args.judge_limit)
         print(f"judge: {msg}")
 
     path = report_build.build(conn, OUT_DIR)
