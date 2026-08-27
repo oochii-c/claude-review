@@ -1,8 +1,8 @@
 """Blame judgment via a separate Claude API call (SPEC 5.2).
 
-Gated: needs the `anthropic` SDK plus resolvable credentials (ANTHROPIC_API_KEY
-or an `ant auth login` profile). If either is missing, judge_all() is a no-op so
-the rest of the pipeline (collect -> detect -> report) still runs.
+Backend: ANTHROPIC_API_KEY + anthropic SDK -> direct API; otherwise the logged-in
+`claude` CLI (Claude Code subscription, no separate API billing). If neither is
+available, judge_all() is a no-op so collect -> detect -> report still runs.
 
 The judge is a fresh instance, not a conversation participant (bias control).
 It must cite evidence and give one counter-argument. It asks first whether the
