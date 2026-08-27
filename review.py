@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 
 import db
 from collectors import claude_code
+from analyzers import detect
 
 if hasattr(sys.stdout, "buffer"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
@@ -47,6 +48,10 @@ def main():
     ns, nm = collect(conn, since)
     scope = "all" if since is None else f"since {since.date()}"
     print(f"collected {ns} sessions, {nm} messages ({scope})")
+
+    n_inc = detect.detect_all(conn)
+    n_rounds = conn.execute("SELECT COUNT(*) FROM rounds").fetchone()[0]
+    print(f"detected {n_inc} incident candidates, {n_rounds} round candidates")
 
     # quick sanity readout
     row = conn.execute(

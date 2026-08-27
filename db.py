@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS incidents (
     session_id     TEXT,
     start_idx      INTEGER,
     end_idx        INTEGER,
+    signals        TEXT,             -- rule-detected markers (JSON)
     blame          TEXT,             -- model | prompt | config | env
     type           TEXT,
     confidence     REAL,
