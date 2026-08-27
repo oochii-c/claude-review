@@ -11,6 +11,8 @@ config already carried an instruction that would have prevented the failure.
 
 import json
 import os
+import shutil
+import subprocess
 
 MODEL = "claude-opus-4-8"
 
@@ -59,18 +61,72 @@ SCHEMA = {
 }
 
 
-def _client():
-    """Return an Anthropic client, or None if the SDK or a key is missing."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return None
-    try:
-        import anthropic
-    except ImportError:
-        return None
-    try:
-        return anthropic.Anthropic()
-    except Exception:
-        return None
+def _backend():
+    """Pick a judgment backend: API key -> SDK; else the logged-in `claude` CLI
+    (uses the Claude Code subscription, no separate API billing); else None."""
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        try:
+            import anthropic  # noqa: F401
+
+            return "sdk"
+        except ImportError:
+            pass
+    if shutil.which("claude"):
+        return "cli"
+    return None
+
+
+def _extract_json(text):
+    """Parse a JSON object out of model text, tolerating ```json fences."""
+    t = text.strip()
+    if t.startswith("```"):
+        t = t.split("```", 2)[1]
+        if t.startswith("json"):
+            t = t[4:]
+        t = t.strip()
+    return json.loads(t)
+
+
+def _invoke_sdk(user):
+    import anthropic
+
+    client = anthropic.Anthropic()
+    resp = client.messages.create(
+        model=MODEL,
+        max_tokens=2000,
+        system=SYSTEM,
+        thinking={"type": "adaptive"},
+        output_config={
+            "effort": "medium",
+            "format": {"type": "json_schema", "schema": SCHEMA},
+        },
+        messages=[{"role": "user", "content": user}],
+    )
+    text = next(b.text for b in resp.content if b.type == "text")
+    return json.loads(text)
+
+
+def _invoke_cli(user):
+    prompt = (
+        SYSTEM
+        + "\n\n"
+        + user
+        + "\n\nOutput ONLY a JSON object with exactly these keys: "
+        + "blame, type, confidence, evidence, counter_evidence, suggestion, heat. "
+        + "No prose, no code fences."
+    )
+    proc = subprocess.run(
+        ["claude", "-p", "--output-format", "json", "--model", MODEL],
+        input=prompt,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=180,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"claude CLI failed: {proc.stderr.strip()[:200]}")
+    envelope = json.loads(proc.stdout)
+    return _extract_json(envelope["result"])
 
 
 def _span_text(conn, sid, start, end):
@@ -100,7 +156,7 @@ def _feedback_examples():
         return []
 
 
-def judge_incident(client, span_text, config_text, feedback):
+def judge_incident(backend, span_text, config_text, feedback):
     fb = ""
     if feedback:
         fb = (
@@ -112,26 +168,14 @@ def judge_incident(client, span_text, config_text, feedback):
         f"FAILED EXCHANGE:\n{span_text}{fb}\n\n"
         "Return the judgment as JSON."
     )
-    resp = client.messages.create(
-        model=MODEL,
-        max_tokens=2000,
-        system=SYSTEM,
-        thinking={"type": "adaptive"},
-        output_config={
-            "effort": "medium",
-            "format": {"type": "json_schema", "schema": SCHEMA},
-        },
-        messages=[{"role": "user", "content": user}],
-    )
-    text = next(b.text for b in resp.content if b.type == "text")
-    return json.loads(text)
+    return _invoke_sdk(user) if backend == "sdk" else _invoke_cli(user)
 
 
 def judge_all(conn, limit=None):
     """Judge pending incidents. Returns (judged, message)."""
-    client = _client()
-    if client is None:
-        return 0, "skipped: anthropic SDK or credentials unavailable"
+    backend = _backend()
+    if backend is None:
+        return 0, "skipped: no API key and no `claude` CLI on PATH"
 
     feedback = _feedback_examples()
     q = (
@@ -154,10 +198,19 @@ def judge_all(conn, limit=None):
         )
         span = _span_text(conn, inc["session_id"], inc["start_idx"], inc["end_idx"])
         try:
-            v = judge_incident(client, span, config_text, feedback)
+            v = judge_incident(backend, span, config_text, feedback)
         except Exception as e:
             print(f"  judge error on incident {inc['id']}: {e}")
             continue
+        if "blame" not in v:
+            print(f"  judge skipped incident {inc['id']}: no blame in output")
+            continue
+        v.setdefault("type", "")
+        v.setdefault("confidence", 0.5)
+        v.setdefault("evidence", "")
+        v.setdefault("counter_evidence", "")
+        v.setdefault("suggestion", "")
+        v.setdefault("heat", inc["heat"])
         conn.execute(
             """UPDATE incidents SET blame=?, type=?, confidence=?, evidence=?,
                counter_evidence=?, suggestion=?, heat=? WHERE id=?""",
