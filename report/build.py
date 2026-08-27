@@ -99,7 +99,7 @@ def _incidents(conn, limit=40):
         blame = (f'<span class="tag">{BLAME_KO.get(i["blame"], i["blame"])}</span>'
                  if i["blame"] else '<span class="tag pending">미판정</span>')
         body += '<div class="card"><div class="top">'
-        body += f'<span class="heat {hc}">열기 {i["heat"]:.1f}°C</span>'
+        body += f'<span class="heat {hc}">{i["heat"]:.1f}°C</span>'
         body += f'<span class="tag">{_esc(proj)}</span>'
         body += f'<span class="tag">낭비 {i["wasted_turns"]}턴</span>'
         body += f'<span class="tag">{_esc(signals)}</span>'
