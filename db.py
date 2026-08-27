@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS incidents (
     session_id     TEXT,
     start_idx      INTEGER,
     end_idx        INTEGER,
+    signals        TEXT,             -- rule-detected markers (JSON)
     blame          TEXT,             -- model | prompt | config | env
     type           TEXT,
     confidence     REAL,
@@ -44,7 +45,7 @@ CREATE TABLE IF NOT EXISTS incidents (
     counter_evidence TEXT,
     wasted_turns   INTEGER,
     suggestion     TEXT,
-    heat           INTEGER,
+    heat           REAL,             -- body temperature in Celsius (36.0 = calm)
     status         TEXT DEFAULT 'pending'   -- pending | approved | overridden
 );
 CREATE TABLE IF NOT EXISTS rounds (

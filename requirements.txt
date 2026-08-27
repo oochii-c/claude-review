@@ -1,0 +1,3 @@
+# Core pipeline (collect/detect/phrases/report) uses only the Python stdlib.
+# The blame judge (analyzers/judge.py, `python review.py --judge`) needs:
+anthropic>=0.40
