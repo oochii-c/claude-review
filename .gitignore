@@ -1,0 +1,10 @@
+# user conversation data — never commit
+review.db
+feedback.json
+out/
+conversations.json
+*.zip
+
+__pycache__/
+*.pyc
+.env
