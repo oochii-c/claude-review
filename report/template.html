@@ -39,6 +39,24 @@
   .evi { color:var(--dim); font-size:13px; white-space:pre-wrap;
     border-left:2px solid var(--line); padding-left:10px; margin-top:6px; }
   .muted { color:var(--dim); }
+  /* incident table */
+  table.inc { font-size:13px; }
+  table.inc th { cursor:pointer; user-select:none; white-space:nowrap; }
+  table.inc th:hover { color:var(--txt); }
+  table.inc th.sorted::after { content:" ↓"; }
+  table.inc th.sorted.asc::after { content:" ↑"; }
+  table.inc tbody tr.row { cursor:pointer; }
+  table.inc tbody tr.row:hover td { background:#20222b; }
+  table.inc td.temp { font-weight:600; font-variant-numeric:tabular-nums; }
+  tr.detail { display:none; }
+  tr.detail.open { display:table-row; }
+  tr.detail td { background:#181a21; color:var(--dim); }
+  tr.detail .evi { margin:4px 0; }
+  .pivots { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; }
+  .pivot h3 { font-size:12px; color:var(--dim); margin:0 0 6px; font-weight:500;
+    text-transform:uppercase; letter-spacing:.05em; }
+  .pivot table { font-size:13px; }
+  .pivot td.num { text-align:right; font-variant-numeric:tabular-nums; }
 </style>
 </head>
 <body>
@@ -47,5 +65,36 @@
   <div class="sub">{DATE}</div>
   {BODY}
 </div>
+<script>
+// row expand
+document.querySelectorAll('table.inc tr.row').forEach(function(r){
+  r.addEventListener('click', function(){
+    var d = r.nextElementSibling;
+    if (d && d.classList.contains('detail')) d.classList.toggle('open');
+  });
+});
+// column sort
+document.querySelectorAll('table.inc th[data-key]').forEach(function(th){
+  th.addEventListener('click', function(){
+    var table = th.closest('table'), tb = table.tBodies[0];
+    var idx = Array.prototype.indexOf.call(th.parentNode.children, th);
+    var asc = !(th.classList.contains('sorted') && !th.classList.contains('asc'));
+    table.querySelectorAll('th').forEach(function(h){ h.classList.remove('sorted','asc'); });
+    th.classList.add('sorted'); if (asc) th.classList.add('asc');
+    // pair each row with its detail sibling BEFORE moving anything
+    var pairs = Array.prototype.map.call(tb.querySelectorAll('tr.row'), function(r){
+      var d = r.nextElementSibling;
+      return [r, (d && d.classList.contains('detail')) ? d : null];
+    });
+    var num = th.dataset.type === 'num';
+    pairs.sort(function(a, b){
+      var av = a[0].children[idx].dataset.sort, bv = b[0].children[idx].dataset.sort;
+      if (num) { av = parseFloat(av)||0; bv = parseFloat(bv)||0; return asc ? av-bv : bv-av; }
+      return asc ? (''+av).localeCompare(bv) : (''+bv).localeCompare(av);
+    });
+    pairs.forEach(function(p){ tb.appendChild(p[0]); if (p[1]) tb.appendChild(p[1]); });
+  });
+});
+</script>
 </body>
 </html>

@@ -84,35 +84,99 @@ def _phrases(conn):
     return body + "</table>"
 
 
-def _incidents(conn, limit=40):
+def _span_users(conn, sid, start, end, n=4):
+    """A few user turns in the incident span, for the expanded detail row."""
+    rows = conn.execute(
+        "SELECT text FROM messages WHERE session_id=? AND idx BETWEEN ? AND ? "
+        "AND role='user' AND text IS NOT NULL ORDER BY idx LIMIT ?",
+        (sid, start, end, n),
+    ).fetchall()
+    return [r["text"] for r in rows]
+
+
+def _pivot(conn):
+    def tbl(title, rows):
+        if not rows:
+            return ""
+        body = f'<div class="pivot"><h3>{_esc(title)}</h3><table>'
+        for label, num in rows:
+            body += f'<tr><td>{_esc(str(label))}</td><td class="num">{num}</td></tr>'
+        return body + "</table></div>"
+
+    # blame (미판정 포함)
+    blame_rows = conn.execute(
+        "SELECT blame, COUNT(*) c FROM incidents GROUP BY blame ORDER BY c DESC"
+    ).fetchall()
+    blame = [(BLAME_KO.get(r["blame"], r["blame"]) if r["blame"] else "미판정", r["c"])
+             for r in blame_rows]
+
+    # project: 건수 + 평균 체온
+    proj_rows = conn.execute(
+        "SELECT s.project, COUNT(*) c, AVG(i.heat) t FROM incidents i "
+        "JOIN sessions s ON i.session_id=s.id GROUP BY s.project ORDER BY c DESC LIMIT 8"
+    ).fetchall()
+    proj = [(os.path.basename(r["project"] or "") or "?",
+             f'{r["c"]}건 · {r["t"]:.1f}°C') for r in proj_rows]
+
+    # signal frequency
+    sig_ct = {}
+    for r in conn.execute("SELECT signals FROM incidents"):
+        for s in json.loads(r["signals"] or "[]"):
+            sig_ct[s] = sig_ct.get(s, 0) + 1
+    sig = sorted(sig_ct.items(), key=lambda x: -x[1])
+
+    out = "<h2>피벗</h2><div class='pivots'>"
+    out += tbl("귀책", blame) + tbl("프로젝트", proj) + tbl("신호", sig)
+    return out + "</div>"
+
+
+def _incidents(conn, limit=60):
     rows = conn.execute(
         "SELECT i.*, s.project FROM incidents i JOIN sessions s ON i.session_id=s.id "
-        "ORDER BY i.wasted_turns DESC, i.heat DESC LIMIT ?", (limit,)
+        "ORDER BY i.heat DESC, i.wasted_turns DESC LIMIT ?", (limit,)
     ).fetchall()
     if not rows:
         return "<h2>사건 분석</h2><p class='sub'>사건 없음.</p>"
-    body = "<h2>사건 분석</h2>"
+
+    head = ('<h2>사건 분석</h2>'
+            '<table class="inc"><thead><tr>'
+            '<th data-key="temp" data-type="num" class="sorted">체온</th>'
+            '<th data-key="proj">프로젝트</th>'
+            '<th data-key="sess">세션</th>'
+            '<th data-key="turns" data-type="num">낭비턴</th>'
+            '<th data-key="sig">신호</th>'
+            '<th data-key="blame">귀책</th>'
+            '</tr></thead><tbody>')
+    trs = []
     for i in rows:
         proj = os.path.basename(i["project"] or "") or "?"
         signals = ", ".join(json.loads(i["signals"] or "[]"))
         hc = _heat_class(i["heat"])
-        blame = (f'<span class="tag">{BLAME_KO.get(i["blame"], i["blame"])}</span>'
-                 if i["blame"] else '<span class="tag pending">미판정</span>')
-        body += '<div class="card"><div class="top">'
-        body += f'<span class="heat {hc}">{i["heat"]:.1f}°C</span>'
-        body += f'<span class="tag">{_esc(proj)}</span>'
-        body += f'<span class="tag">낭비 {i["wasted_turns"]}턴</span>'
-        body += f'<span class="tag">{_esc(signals)}</span>'
-        body += blame
-        body += "</div>"
+        blame = BLAME_KO.get(i["blame"], i["blame"]) if i["blame"] else "미판정"
+        blame_cls = "" if i["blame"] else ' class="muted"'
+        sess = i["session_id"][:8]
+        trs.append(
+            '<tr class="row">'
+            f'<td class="temp {hc}" data-sort="{i["heat"]}">{i["heat"]:.1f}°C</td>'
+            f'<td data-sort="{_esc(proj)}">{_esc(proj)}</td>'
+            f'<td class="muted" data-sort="{sess}">{sess}</td>'
+            f'<td class="num" data-sort="{i["wasted_turns"]}">{i["wasted_turns"]}</td>'
+            f'<td data-sort="{_esc(signals)}">{_esc(signals)}</td>'
+            f'<td{blame_cls} data-sort="{_esc(blame)}">{_esc(blame)}</td>'
+            '</tr>'
+        )
+        # detail row
+        det = ""
+        for u in _span_users(conn, i["session_id"], i["start_idx"], i["end_idx"]):
+            det += f'<div class="evi">🗣 {_esc(u[:200])}</div>'
         if i["suggestion"]:
-            body += f'<div>{_esc(i["suggestion"])}</div>'
+            det += f'<div class="evi">💡 {_esc(i["suggestion"])}</div>'
         if i["evidence"]:
-            body += f'<div class="evi">{_esc(i["evidence"])}</div>'
+            det += f'<div class="evi">근거: {_esc(i["evidence"])}</div>'
         if i["counter_evidence"]:
-            body += f'<div class="evi">반대 근거: {_esc(i["counter_evidence"])}</div>'
-        body += "</div>"
-    return body
+            det += f'<div class="evi">반대: {_esc(i["counter_evidence"])}</div>'
+        trs.append(f'<tr class="detail"><td colspan="6">{det}</td></tr>')
+    return head + "".join(trs) + "</tbody></table>"
 
 
 def build(conn, out_dir, date_label=None):
@@ -123,7 +187,7 @@ def build(conn, out_dir, date_label=None):
     if span and span["a"]:
         date_label += f'  ·  {span["a"][:10]} ~ {span["b"][:10]}'
 
-    body = _scoreboard(conn) + _phrases(conn) + _incidents(conn)
+    body = _scoreboard(conn) + _phrases(conn) + _pivot(conn) + _incidents(conn)
     with open(TPL, encoding="utf-8") as f:
         tpl = f.read()
     doc = tpl.replace("{DATE}", _esc(date_label)).replace("{BODY}", body)
