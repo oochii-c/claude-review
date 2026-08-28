@@ -130,51 +130,83 @@ def _pivot(conn):
     return out + "</div>"
 
 
-def _incidents(conn, limit=60):
+def _blame_summary(incs):
+    """e.g. '모델 2 · 프롬프트 1' over a session's incidents (미판정 included)."""
+    ct = {}
+    for i in incs:
+        k = BLAME_KO.get(i["blame"], i["blame"]) if i["blame"] else "미판정"
+        ct[k] = ct.get(k, 0) + 1
+    return " · ".join(f"{k} {v}" for k, v in sorted(ct.items(), key=lambda x: -x[1]))
+
+
+def _incident_detail(conn, i):
+    hc = _heat_class(i["heat"])
+    blame = BLAME_KO.get(i["blame"], i["blame"]) if i["blame"] else "미판정"
+    signals = ", ".join(json.loads(i["signals"] or "[]"))
+    d = (f'<div class="inc-hd"><span class="temp {hc}">{i["heat"]:.1f}°C</span> '
+         f'<span class="tag">{_esc(signals)}</span> '
+         f'<span class="tag">{_esc(blame)}</span> '
+         f'<span class="tag">낭비 {i["wasted_turns"]}턴</span></div>')
+    for u in _span_users(conn, i["session_id"], i["start_idx"], i["end_idx"]):
+        d += f'<div class="evi">🗣 {_esc(u[:200])}</div>'
+    if i["suggestion"]:
+        d += f'<div class="evi">💡 {_esc(i["suggestion"])}</div>'
+    if i["evidence"]:
+        d += f'<div class="evi">근거: {_esc(i["evidence"])}</div>'
+    if i["counter_evidence"]:
+        d += f'<div class="evi">반대: {_esc(i["counter_evidence"])}</div>'
+    return d
+
+
+def _incidents(conn):
     rows = conn.execute(
         "SELECT i.*, s.project FROM incidents i JOIN sessions s ON i.session_id=s.id "
-        "ORDER BY i.heat DESC, i.wasted_turns DESC LIMIT ?", (limit,)
+        "ORDER BY i.heat DESC, i.wasted_turns DESC"
     ).fetchall()
     if not rows:
         return "<h2>사건 분석</h2><p class='sub'>사건 없음.</p>"
 
-    head = ('<h2>사건 분석</h2>'
+    # group by session (a session belongs to one project)
+    groups = {}
+    for i in rows:
+        groups.setdefault(i["session_id"], []).append(i)
+    # session summaries, sorted by hottest incident
+    sessions = []
+    for sid, incs in groups.items():
+        sessions.append({
+            "sid": sid, "project": incs[0]["project"],
+            "max_heat": max(x["heat"] for x in incs),
+            "turns": sum(x["wasted_turns"] for x in incs),
+            "n": len(incs), "incs": incs,
+        })
+    sessions.sort(key=lambda s: (-s["max_heat"], -s["turns"]))
+
+    head = ('<h2>사건 분석 <span class="sub">— 세션별 (행 클릭 시 개별 사건)</span></h2>'
             '<table class="inc"><thead><tr>'
-            '<th data-key="temp" data-type="num" class="sorted">체온</th>'
+            '<th data-key="temp" data-type="num" class="sorted">최고체온</th>'
             '<th data-key="proj">프로젝트</th>'
             '<th data-key="sess">세션</th>'
+            '<th data-key="n" data-type="num">사건</th>'
             '<th data-key="turns" data-type="num">낭비턴</th>'
-            '<th data-key="sig">신호</th>'
             '<th data-key="blame">귀책</th>'
             '</tr></thead><tbody>')
     trs = []
-    for i in rows:
-        proj = os.path.basename(i["project"] or "") or "?"
-        signals = ", ".join(json.loads(i["signals"] or "[]"))
-        hc = _heat_class(i["heat"])
-        blame = BLAME_KO.get(i["blame"], i["blame"]) if i["blame"] else "미판정"
-        blame_cls = "" if i["blame"] else ' class="muted"'
-        sess = i["session_id"][:8]
+    for s in sessions:
+        proj = os.path.basename(s["project"] or "") or "?"
+        hc = _heat_class(s["max_heat"])
+        bsum = _blame_summary(s["incs"])
         trs.append(
             '<tr class="row">'
-            f'<td class="temp {hc}" data-sort="{i["heat"]}">{i["heat"]:.1f}°C</td>'
+            f'<td class="temp {hc}" data-sort="{s["max_heat"]}">{s["max_heat"]:.1f}°C</td>'
             f'<td data-sort="{_esc(proj)}">{_esc(proj)}</td>'
-            f'<td class="muted" data-sort="{sess}">{sess}</td>'
-            f'<td class="num" data-sort="{i["wasted_turns"]}">{i["wasted_turns"]}</td>'
-            f'<td data-sort="{_esc(signals)}">{_esc(signals)}</td>'
-            f'<td{blame_cls} data-sort="{_esc(blame)}">{_esc(blame)}</td>'
+            f'<td class="muted" data-sort="{s["sid"][:8]}">{s["sid"][:8]}</td>'
+            f'<td class="num" data-sort="{s["n"]}">{s["n"]}</td>'
+            f'<td class="num" data-sort="{s["turns"]}">{s["turns"]}</td>'
+            f'<td data-sort="{_esc(bsum)}">{_esc(bsum)}</td>'
             '</tr>'
         )
-        # detail row
-        det = ""
-        for u in _span_users(conn, i["session_id"], i["start_idx"], i["end_idx"]):
-            det += f'<div class="evi">🗣 {_esc(u[:200])}</div>'
-        if i["suggestion"]:
-            det += f'<div class="evi">💡 {_esc(i["suggestion"])}</div>'
-        if i["evidence"]:
-            det += f'<div class="evi">근거: {_esc(i["evidence"])}</div>'
-        if i["counter_evidence"]:
-            det += f'<div class="evi">반대: {_esc(i["counter_evidence"])}</div>'
+        det = "".join(f'<div class="inc-item">{_incident_detail(conn, i)}</div>'
+                      for i in s["incs"])
         trs.append(f'<tr class="detail"><td colspan="6">{det}</td></tr>')
     return head + "".join(trs) + "</tbody></table>"
 
