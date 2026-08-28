@@ -1,4 +1,4 @@
-# claude-review — Claude 협업 데일리 리뷰
+# court — Claude 협업 데일리 리뷰
 
 ## 1. 목표
 
@@ -17,7 +17,7 @@ Claude와의 협업(Claude Code, claude.ai 웹, 데스크톱 앱)에서 반복�
 로컬 파이썬 프로젝트 + SQLite + 정적 HTML + (5단계) 크롬 확장. 서버·외부 DB 없음.
 
 ```
-claude-review/
+court/
   review.py            # 진입점: 수집 → 분석 → 리포트 → 브라우저 오픈
   db.py                # SQLite 연결 + 스키마 초기화 + upsert 헬퍼
   requirements.txt     # judge용 anthropic SDK (선택)
@@ -168,7 +168,7 @@ github.com/oochii-c/youbad 는 이 기획의 전신. 살릴 것과 버릴 것:
 - 맥락으로만 살림: comm-profile.md의 "누구와 일하는가" 절. 판정 프롬프트에 배경으로 넣되 규칙으로 쓰지 않는다.
 - 버림: friction/affect 정규식 축(미검토, 짜증 0.2%는 못 잡는 것), 28일 집계로 성향 규칙을 뽑아
   comm-profile을 생성하는 로직, CLAUDE.md 자동 반영.
-- 방향 차이: youbad는 Claude가 사용자를 프로파일링해 스스로 맞추는 것. claude-review는 양쪽을 대칭으로 판정하고
+- 방향 차이: youbad는 Claude가 사용자를 프로파일링해 스스로 맞추는 것. court는 양쪽을 대칭으로 판정하고
   사람이 읽고 사람이 고치는 것. 제안까지만, 반영은 사람.
 
 ## 9. 제약·주의

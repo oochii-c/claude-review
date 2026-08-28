@@ -1,4 +1,4 @@
-"""SQLite store for claude-review. Schema per SPEC.md section 4."""
+"""SQLite store for court. Schema per SPEC.md section 4."""
 
 import sqlite3
 import os

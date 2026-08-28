@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""claude-review entry point: collect -> analyze -> report -> open browser.
+"""court entry point: collect -> analyze -> report -> open browser.
 
 python review.py            # yesterday's sessions (mtime), open report
 python review.py --all      # every session
